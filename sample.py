@@ -17,14 +17,16 @@ def main():
     sobel_x = np.mat([[1,2,1],[0,0,0],[-1,-2,-1]])
     sobel_y = np.mat([[-1,0,1],[-2,0,2],[-1,0,1]])
 
-    img2 = my_convolution(img,kernel)
+    img2 = cross_correlation_2d(img,kernel)
     
+    xsobel = cross_correlation_2d(img2,sobel_x)
+    img3 = cross_correlation_2d(img2,sobel_y)
+    grad, dirMat = gradient(xsobel, img3, 25)
+
     img2 = cv2.convertScaleAbs(img2)
-    cv2Canny = cv2.Canny(img2,100,200)
-    xsobel = my_convolution(img2,sobel_x)
-    img3 = my_convolution(img2,sobel_y)
-    grad = gradient(xsobel, img3, 25)
-    imgNone = non_max_suppression(grad, dirMatrix(xsobel,img3))
+
+    imgNone = non_max_suppression(grad, dirMat)
+    
     
 
     grad = cv2.convertScaleAbs(grad)
@@ -34,14 +36,15 @@ def main():
     
     cv2.imshow("smooth",img2)
     cv2.imshow("xsobel",xsobel)
-    cv2.imshow("ysobelcv",cv2Canny)
+#     cv2.imshow("ysobelcv",cv2Canny)
     cv2.imshow("ysobel",img3)
     cv2.imshow("gradient",grad)
     cv2.imshow("non-max",imgNone)
+    cv2.imshow("gradOr",dirMat)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-def my_convolution(image, kernel):
+def cross_correlation_2d(image, kernel):
     m, n = kernel.shape
     if (m == n):
         y,x = image.shape
@@ -62,48 +65,56 @@ def my_convolution(image, kernel):
         return np.mat(result)
     return [[]]
 
-def dirMatrix(imgx, imgy):
-    return np.arctan2(imgx,imgy)
-
-def non_max_suppression(img, dirmat):
-    M, N = img.shape
-    Z = np.zeros((M,N), dtype=np.int32)
-    angle = dirmat * 180. / np.pi
-    # angle[angle < 0] += 180
-
+def convolve_2d(image, kernel):
+    kernel = rotate_matrix_180(kernel)
+    return cross_correlation_2d(image, kernel)
     
-    for i in range(1,M-1):
-        for j in range(1,N-1):
-            try:
-                q = 255
-                r = 255
-                
-               #angle 0
-                if (0 <= angle[i,j] < 22.5) or (157.5 <= angle[i,j] <= 180):
-                    q = img[i, j+1]
-                    r = img[i, j-1]
-                #angle 45
-                elif (22.5 <= angle[i,j] < 67.5):
-                    q = img[i+1, j-1]
-                    r = img[i-1, j+1]
-                #angle 90
-                elif (67.5 <= angle[i,j] < 112.5):
-                    q = img[i+1, j]
-                    r = img[i-1, j]
-                #angle 135
-                elif (112.5 <= angle[i,j] < 157.5):
-                    q = img[i-1, j-1]
-                    r = img[i+1, j+1]
+def rotate_matrix_180(kernel):
+    new_ker = kernel.copy()
+    for i in range(kernel.shape[0]): 
+        h = 0
+        k = kernel.shape[0]-1
+        while h < k: 
+            t = kernel[h,i] 
+            new_ker[h,i] = kernel[k,i] 
+            new_ker[k,i] = t 
+            h += 1
+            k -= 1
+    return new_ker
 
-                if (img[i,j] >= q) and (img[i,j] >= r):
-                    Z[i,j] = img[i,j]
+def non_max_suppression(grad, dirmat):
+    y, x = grad.shape
+    new_grad = np.zeros((y,x), dtype=np.int32)
+    angles = np.array(dirmat)
+    angles[angles < 0] += 180
+
+    for i in range(1, y - 1):
+        for j in range(1, x - 1):
+            try:
+                c = 255
+                k = 255
+                if 0 <= angles[i,j] < 22.5 or 157.5 <= angles[i,j] <= 180:
+                    c = grad[i, j+1]
+                    k = grad[i, j-1]
+                elif 22.5 <= angles[i,j] < 67.5:
+                    c = grad[i+1, j-1]
+                    k = grad[i-1, j+1]
+                elif 67.5 <= angles[i,j] < 112.5:
+                    c = grad[i+1, j]
+                    k = grad[i-1, j]
+                elif 112.5 <= angles[i,j] < 157.5:
+                    c = grad[i-1, j-1]
+                    k = grad[i+1, j+1]
+
+                if grad[i,j] >= c and grad[i,j] >= k:
+                    new_grad[i,j] = grad[i,j]
                 else:
-                    Z[i,j] = 0
+                    new_grad[i,j] = 0
 
             except IndexError as e:
                 pass
     
-    return Z
+    return new_grad
 def gradient(imagex, imagey, threshold):
     if(imagex.shape == imagey.shape):
         new_img = np.zeros(imagex.shape)
@@ -115,7 +126,8 @@ def gradient(imagex, imagey, threshold):
                     new_img[i,j] = sum
                 else:
                     new_img[i,j] = 0
-        return new_img
+        ori = np.degrees(np.arctan2(imagex,imagey))
+        return new_img, ori
 def calc_kernel(sigma):
     hsize = 2 * math.ceil(3 * sigma) + 1
     kernel = np.zeros((hsize,hsize))

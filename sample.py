@@ -40,26 +40,69 @@ def myEdgeFilter(img0, sigma):
 
 
 def main():
-    img_cat = cv2.imread("cat.png",cv2.IMREAD_GRAYSCALE)
-    #img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    img_dog = cv2.imread("dog.png",cv2.IMREAD_GRAYSCALE)
+    img_cat = cv2.imread("cat.png",cv2.IMREAD_COLOR)
+    img_dog = cv2.imread("dog.png",cv2.IMREAD_COLOR)
+
+    cat_b,cat_g,cat_r = cv2.split(img_cat)
+    dog_b,dog_g,dog_r = cv2.split(img_dog)
   
 
     khp = np.mat([[-1,-1,-1],[-1,8,-1],[-1,-1,-1]])
     # canny = myEdgeFilter(img, 0.25) 
     # im.append(canny)
     # tit.append("Canny")
-    gauss_3x3 = calc_kernel(3, 0.25)
+    sigma = 10
+    hsize = 2 * math.ceil ( 3 * sigma) + 1
+    gauss_3x3 = calc_kernel(hsize,sigma)
 
-    fil = high_pass(img_cat, calc_kernel(51,5))
-    im.append(fil)
-    tit.append("high pass")
 
-    fil2 = low_pass(img_dog, gauss_3x3)
-    im.append(fil2)
-    tit.append("low pass")
+    fil_cat_r = high_pass(cat_r, gauss_3x3)
+    fil_cat_g = high_pass(cat_g, gauss_3x3)
+    fil_cat_b = high_pass(cat_b, gauss_3x3)
 
-    hybrid = fil + fil2
+    im.append(fil_cat_r)
+    tit.append("fil_cat_r")
+    im.append(fil_cat_g)
+    tit.append("fil_cat_g")
+    im.append(fil_cat_b)
+    tit.append("fil_cat_b")
+
+
+
+    fil_im_cat = cv2.merge((fil_cat_r,fil_cat_g,fil_cat_b))
+    fil_im_cat = cv2.convertScaleAbs(fil_im_cat)
+    im.append(fil_im_cat)
+    tit.append("cat")
+
+    sigma = 7
+    hsize = 2 * math.ceil ( 3 * sigma) + 1
+    gauss_3x3 = calc_kernel(hsize,sigma)
+    fil_dog_r = low_pass(dog_r, gauss_3x3)
+    fil_dog_g = low_pass(dog_g, gauss_3x3)
+    fil_dog_b = low_pass(dog_b, gauss_3x3)
+    
+    hybR = fil_cat_r + fil_dog_r
+    hybG = fil_cat_g + fil_dog_g
+    hybB = fil_cat_b + fil_dog_b
+    
+    hyb2 = cv2.merge((hybR,hybG,hybB))
+    hyb2 = cv2.convertScaleAbs(hyb2)
+
+    im.append(hyb2)
+    
+    tit.append("hyb2")
+    
+
+    fil_im_dog = cv2.merge((fil_dog_r,fil_dog_g,fil_dog_b))
+    fil_im_dog = cv2.convertScaleAbs(fil_im_dog)
+    im.append(fil_im_dog)
+    tit.append("dog")
+
+    # fil2 = low_pass(dog_g, gauss_3x3)
+    # im.append(fil2)
+    # tit.append("low pass")
+
+    hybrid = fil_im_cat + fil_im_dog
     im.append(hybrid)
     tit.append("hybrid")
     # cv2.imshow("hipghas",hp)
@@ -70,6 +113,20 @@ def main():
     show_images(im,titles=tit)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
+
+def sum(a, b):
+    x, y = a.shape
+    new = np.zeros(a.shape)
+    for i in range(x):
+        for j in range(y):
+            sum = a[i,j] + b[i,j]
+            if(sum > 255):
+                sum = 255
+            elif sum < 0:
+                sum = 0
+            new[i,j] = sum
+    return new
+            
 
 def high_pass(img, kernel):
     smooth_img = convolve_2d(img, kernel)
@@ -104,8 +161,10 @@ def show_images(images, cols = 1, titles = None):
         #     plt.gray()
         plt.imshow(image, cmap='gray')
         a.set_title(title)
-    fig.set_size_inches(np.array(fig.get_size_inches()) * n_images + 1000)
+    fig.set_size_inches(np.array(fig.get_size_inches())+  n_images)
     plt.show()
+
+     
 def cross_correlation_2d(image, kernel):
     m, n = kernel.shape
     if (m == n):
